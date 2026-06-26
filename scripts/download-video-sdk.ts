@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 
 const baseUrl = 'https://dev.meos.center/iot-message-notification/video-sdk';
@@ -32,7 +32,7 @@ const optionalFiles = [
   'playctrl3/SuperRender_10.js'
 ];
 
-async function downloadFile(path, required) {
+async function downloadFile(path: string, required: boolean): Promise<void> {
   const url = `${baseUrl}/${path}`;
   const response = await fetch(url);
 
@@ -47,7 +47,7 @@ async function downloadFile(path, required) {
 
   const target = join(outputDir, path);
   await mkdir(dirname(target), { recursive: true });
-  await writeFile(target, Buffer.from(await response.arrayBuffer()));
+  await Bun.write(target, await response.arrayBuffer());
   console.log(`Downloaded ${path}`);
 }
 
