@@ -1,10 +1,14 @@
 {
   "name": "hik-video-stream-test",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 bun run server/index.ts",
-    "sdk:download": "bun run scripts/download-video-sdk.ts",
-    "test": "bun test"
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 node server/index.js",
+    "sdk:download": "node scripts/download-video-sdk.js",
+    "test": "node --test"
   },
-  "devDependencies": {}
+  "dependencies": {
+    "undici": "^7.28.0",
+    "ws": "^8.18.3"
+  }
 }

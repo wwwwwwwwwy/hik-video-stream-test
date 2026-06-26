@@ -1,23 +1,14 @@
-import { createLocalPlaybackUrl, deriveUpstreamPlayback } from './proxy-url';
+import { randomUUID } from 'node:crypto';
+import { createLocalPlaybackUrl, deriveUpstreamPlayback } from './proxy-url.js';
 
-export type ProxyRecord = {
-  id: string;
-  sourceUrl: string;
-  localUrl: string;
-  upstreamConnectUrl: string;
-  upstreamPlayURL: string;
-  createdAt: number;
-  expiresAt: number;
-};
-
-const records = new Map<string, ProxyRecord>();
+const records = new Map();
 const ttlMs = 10 * 60 * 1000;
 
-export function createProxyRecord(sourceUrl: string, host: string, secure: boolean): ProxyRecord {
-  const id = crypto.randomUUID();
+export function createProxyRecord(sourceUrl, host, secure) {
+  const id = randomUUID();
   const upstream = deriveUpstreamPlayback(sourceUrl);
   const now = Date.now();
-  const record: ProxyRecord = {
+  const record = {
     id,
     sourceUrl,
     localUrl: createLocalPlaybackUrl({ id, host, secure }),
@@ -31,7 +22,7 @@ export function createProxyRecord(sourceUrl: string, host: string, secure: boole
   return record;
 }
 
-export function getProxyRecord(id: string): ProxyRecord | null {
+export function getProxyRecord(id) {
   const record = records.get(id);
   if (!record) {
     return null;
@@ -45,7 +36,7 @@ export function getProxyRecord(id: string): ProxyRecord | null {
   return record;
 }
 
-export function pruneProxyRecords(): void {
+export function pruneProxyRecords() {
   const now = Date.now();
   for (const [id, record] of records) {
     if (record.expiresAt <= now) {
