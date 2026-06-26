@@ -29,6 +29,10 @@ export function extractProxyId(value) {
   }
 }
 
+export function extractPlaybackRequestProxyId(url) {
+  return extractProxyId(url.href) || url.searchParams.get('sessionID') || url.searchParams.get('session') || null;
+}
+
 export function deriveUpstreamPlayback(value) {
   const url = assertStreamUrl(value);
   const versionQuery = 'version=0.1&cipherSuites=0&sessionID=';

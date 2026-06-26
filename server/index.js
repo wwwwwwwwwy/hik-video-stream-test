@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { join, normalize, relative, sep } from 'node:path';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createProxyRecord, getProxyRecord, pruneProxyRecords } from './proxy-store.js';
-import { extractProxyId } from './proxy-url.js';
+import { extractPlaybackRequestProxyId, extractProxyId } from './proxy-url.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || '8080');
@@ -93,7 +93,7 @@ function staticResponse(req, res, baseDir, requestPath) {
 }
 
 function parseProxyIdFromRequest(url) {
-  return url.searchParams.get('sessionID') || url.searchParams.get('session') || null;
+  return extractPlaybackRequestProxyId(url);
 }
 
 function readRequestJson(req) {

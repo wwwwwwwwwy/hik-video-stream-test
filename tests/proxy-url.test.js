@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { createLocalPlaybackUrl, deriveUpstreamPlayback, extractProxyId } from '../server/proxy-url.js';
+import {
+  createLocalPlaybackUrl,
+  deriveUpstreamPlayback,
+  extractPlaybackRequestProxyId,
+  extractProxyId
+} from '../server/proxy-url.js';
 
 describe('proxy url helpers', () => {
   test('creates a local playback url with the proxy id as the openUrl token', () => {
@@ -32,5 +37,11 @@ describe('proxy url helpers', () => {
 
   test('extracts the proxy id from a local openUrl playback url', () => {
     assert.equal(extractProxyId('ws://127.0.0.1:8080/openUrl/abc%20123?sessionID=ignored'), 'abc 123');
+  });
+
+  test('extracts the proxy id from the playback request path before checking query parameters', () => {
+    const url = new URL('http://127.0.0.1:8080/openUrl/path-id?sessionID=query-id');
+
+    assert.equal(extractPlaybackRequestProxyId(url), 'path-id');
   });
 });
