@@ -40,7 +40,7 @@
 
             .control {
                 display: grid;
-                grid-template-columns: 1fr auto auto auto;
+                grid-template-columns: 1fr auto auto auto auto;
                 gap: 10px;
                 align-items: center;
                 margin-bottom: 16px;
@@ -80,6 +80,28 @@
 
             button:hover {
                 filter: brightness(0.98);
+            }
+
+            .direct-toggle {
+                display: inline-flex;
+                height: 38px;
+                align-items: center;
+                gap: 8px;
+                padding: 0 12px;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                background: #ffffff;
+                color: #1f2933;
+                font-size: 14px;
+                white-space: nowrap;
+            }
+
+            .direct-toggle input {
+                width: 16px;
+                height: 16px;
+                padding: 0;
+                margin: 0;
+                accent-color: #2563eb;
             }
 
             .player-shell {
@@ -136,6 +158,11 @@
                     width: 100%;
                 }
 
+                .direct-toggle {
+                    width: 100%;
+                    justify-content: center;
+                }
+
                 #player,
                 .log {
                     min-height: 260px;
@@ -150,6 +177,10 @@
             <section class="panel">
                 <div class="control">
                     <input id="videoUrl" type="text" placeholder="Paste ws:// or wss:// stream URL here" autocomplete="off" />
+                    <label class="direct-toggle" for="directWs">
+                        <input id="directWs" type="checkbox" checked />
+                        <span>ws direct</span>
+                    </label>
                     <button id="playBtn" class="primary" type="button">Play</button>
                     <button id="stopBtn" type="button">Stop</button>
                     <button id="clearLogBtn" type="button">Clear Log</button>
@@ -159,7 +190,7 @@
                     <pre id="log" class="log"></pre>
                 </div>
                 <p class="hint">
-                    Serve this file from the Bun backend, then paste a realtime HIK stream URL and click Play.
+                    Serve this file from the Node.js backend, then paste a realtime HIK stream URL and click Play.
                 </p>
             </section>
         </main>
@@ -169,6 +200,7 @@
                 var player = null;
                 var logEl = document.getElementById('log');
                 var inputEl = document.getElementById('videoUrl');
+                var directWsEl = document.getElementById('directWs');
                 var playBtn = document.getElementById('playBtn');
                 var stopBtn = document.getElementById('stopBtn');
                 var clearLogBtn = document.getElementById('clearLogBtn');
@@ -193,6 +225,10 @@
 
                 function getVideoUrl() {
                     return inputEl.value.trim();
+                }
+
+                function shouldUseDirectWs(sourceUrl) {
+                    return directWsEl.checked && sourceUrl.indexOf('ws://') === 0;
                 }
 
                 async function createProxyUrl(sourceUrl) {
@@ -254,6 +290,13 @@
 
                     try {
                         var instance = initPlayer();
+                        if (shouldUseDirectWs(videoUrl)) {
+                            log('Direct ws play', { sourceUrl: videoUrl });
+                            var directResult = await instance.JS_Play(videoUrl, { playURL: videoUrl, mode: 1 }, 0);
+                            log('JS_Play resolved', directResult);
+                            return;
+                        }
+
                         log('Proxy URL request', { url: videoUrl });
                         var proxy = await createProxyUrl(videoUrl);
                         log('JS_Play start', { sourceUrl: videoUrl, playUrl: proxy.playUrl, sessionID: proxy.sessionID });
