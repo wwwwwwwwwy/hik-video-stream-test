@@ -1,0 +1,13 @@
+{
+  "name": "hik-video-stream-test",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "NODE_TLS_REJECT_UNAUTHORIZED=0 node server/index.js",
+    "sdk:download": "node scripts/download-video-sdk.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "ws": "^8.18.3"
+  }
+}

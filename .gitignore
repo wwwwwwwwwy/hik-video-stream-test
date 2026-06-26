@@ -1,0 +1,6 @@
+node_modules/
+.codegraph/
+.playwright-mcp/
+.DS_Store
+*.log
+

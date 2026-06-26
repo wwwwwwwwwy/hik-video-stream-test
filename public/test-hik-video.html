@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>HIK Video Stream Test</title>
+        <style>
+            * {
+                box-sizing: border-box;
+            }
+
+            body {
+                margin: 0;
+                min-height: 100vh;
+                background: #f4f6f8;
+                color: #1f2933;
+                font-family:
+                    -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+            }
+
+            .page {
+                width: min(1180px, calc(100vw - 48px));
+                margin: 0 auto;
+                padding: 24px 0;
+            }
+
+            h1 {
+                margin: 0 0 16px;
+                font-size: 22px;
+                font-weight: 650;
+            }
+
+            .panel {
+                background: #ffffff;
+                border: 1px solid #d9e2ec;
+                border-radius: 8px;
+                padding: 16px;
+                box-shadow: 0 1px 2px rgba(15, 23, 42, 0.05);
+            }
+
+            .control {
+                display: grid;
+                grid-template-columns: 1fr auto auto auto;
+                gap: 10px;
+                align-items: center;
+                margin-bottom: 16px;
+            }
+
+            input {
+                width: 100%;
+                height: 38px;
+                padding: 0 12px;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+
+            input:focus {
+                border-color: #2563eb;
+                outline: none;
+                box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+            }
+
+            button {
+                height: 38px;
+                min-width: 82px;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                background: #ffffff;
+                color: #1f2933;
+                cursor: pointer;
+                font-size: 14px;
+            }
+
+            button.primary {
+                border-color: #2563eb;
+                background: #2563eb;
+                color: #ffffff;
+            }
+
+            button:hover {
+                filter: brightness(0.98);
+            }
+
+            .player-shell {
+                display: grid;
+                grid-template-columns: minmax(520px, 780px) minmax(280px, 1fr);
+                gap: 16px;
+            }
+
+            #player {
+                width: 100%;
+                aspect-ratio: 16 / 9;
+                min-height: 360px;
+                overflow: hidden;
+                background: #111827;
+                border: 1px solid #111827;
+                border-radius: 6px;
+            }
+
+            .log {
+                min-height: 360px;
+                max-height: 520px;
+                overflow: auto;
+                margin: 0;
+                padding: 12px;
+                background: #0f172a;
+                border-radius: 6px;
+                color: #dbeafe;
+                font-family: Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+                font-size: 12px;
+                line-height: 1.6;
+                white-space: pre-wrap;
+                word-break: break-word;
+            }
+
+            .hint {
+                margin: 12px 0 0;
+                color: #64748b;
+                font-size: 13px;
+                line-height: 1.5;
+            }
+
+            @media (max-width: 860px) {
+                .page {
+                    width: calc(100vw - 24px);
+                    padding: 12px 0;
+                }
+
+                .control,
+                .player-shell {
+                    grid-template-columns: 1fr;
+                }
+
+                button {
+                    width: 100%;
+                }
+
+                #player,
+                .log {
+                    min-height: 260px;
+                }
+            }
+        </style>
+        <script src="/video-sdk/h5player.min.js"></script>
+    </head>
+    <body>
+        <main class="page">
+            <h1>HIK Video Stream Test</h1>
+            <section class="panel">
+                <div class="control">
+                    <input id="videoUrl" type="text" placeholder="Paste ws:// or wss:// stream URL here" autocomplete="off" />
+                    <button id="playBtn" class="primary" type="button">Play</button>
+                    <button id="stopBtn" type="button">Stop</button>
+                    <button id="clearLogBtn" type="button">Clear Log</button>
+                </div>
+                <div class="player-shell">
+                    <div id="player"></div>
+                    <pre id="log" class="log"></pre>
+                </div>
+                <p class="hint">
+                    Serve this file from the Bun backend, then paste a realtime HIK stream URL and click Play.
+                </p>
+            </section>
+        </main>
+
+        <script>
+            (function () {
+                var player = null;
+                var logEl = document.getElementById('log');
+                var inputEl = document.getElementById('videoUrl');
+                var playBtn = document.getElementById('playBtn');
+                var stopBtn = document.getElementById('stopBtn');
+                var clearLogBtn = document.getElementById('clearLogBtn');
+
+                function now() {
+                    return new Date().toLocaleTimeString();
+                }
+
+                function log(message, detail) {
+                    var line = '[' + now() + '] ' + message;
+                    if (detail !== undefined) {
+                        try {
+                            line += ' ' + JSON.stringify(detail);
+                        } catch (error) {
+                            line += ' ' + String(detail);
+                        }
+                    }
+                    logEl.textContent += line + '\n';
+                    logEl.scrollTop = logEl.scrollHeight;
+                    console.log(message, detail || '');
+                }
+
+                function getVideoUrl() {
+                    return inputEl.value.trim();
+                }
+
+                async function createProxyUrl(sourceUrl) {
+                    var response = await fetch('/api/proxy-url', {
+                        method: 'POST',
+                        headers: {
+                            'content-type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            url: sourceUrl
+                        })
+                    });
+
+                    var payload = await response.json();
+                    if (!response.ok) {
+                        throw new Error(payload && payload.error ? payload.error : 'Failed to create proxy URL');
+                    }
+
+                    return payload;
+                }
+
+                function assertSdkReady() {
+                    if (!window.JSPlugin) {
+                        throw new Error('window.JSPlugin is not available. Check remote h5player.min.js path.');
+                    }
+                }
+
+                function initPlayer() {
+                    assertSdkReady();
+
+                    if (player) {
+                        return player;
+                    }
+
+                    player = new window.JSPlugin({
+                        szId: 'player',
+                        szBasePath: '/video-sdk',
+                        iMaxSplit: 1,
+                        iCurrentSplit: 1,
+                        bSupporDoubleClickFull: true,
+                        openDebug: true,
+                        oStyle: {
+                            borderSelect: '#2563eb'
+                        }
+                    });
+
+                    log('JSPlugin initialized');
+                    return player;
+                }
+
+                async function play() {
+                    var videoUrl = getVideoUrl();
+
+                    if (!videoUrl) {
+                        log('Play skipped: videoUrl is empty');
+                        inputEl.focus();
+                        return;
+                    }
+
+                    try {
+                        var instance = initPlayer();
+                        log('Proxy URL request', { url: videoUrl });
+                        var proxy = await createProxyUrl(videoUrl);
+                        log('JS_Play start', { sourceUrl: videoUrl, playUrl: proxy.playUrl, sessionID: proxy.sessionID });
+                        var result = await instance.JS_Play(
+                            proxy.playUrl,
+                            { url: proxy.playUrl, playURL: proxy.playUrl, sessionID: proxy.sessionID, mode: 1 },
+                            0
+                        );
+                        log('JS_Play resolved', result);
+                    } catch (error) {
+                        log('JS_Play failed', {
+                            message: error && error.message ? error.message : String(error)
+                        });
+                    }
+                }
+
+                async function stop() {
+                    if (!player) {
+                        log('Stop skipped: player is not initialized');
+                        return;
+                    }
+
+                    try {
+                        var result = await player.JS_Stop(0);
+                        log('JS_Stop resolved', result);
+                    } catch (error) {
+                        log('JS_Stop failed', {
+                            message: error && error.message ? error.message : String(error)
+                        });
+                    }
+                }
+
+                playBtn.addEventListener('click', play);
+                stopBtn.addEventListener('click', stop);
+                clearLogBtn.addEventListener('click', function () {
+                    logEl.textContent = '';
+                });
+                inputEl.addEventListener('keydown', function (event) {
+                    if (event.key === 'Enter') {
+                        play();
+                    }
+                });
+
+                window.addEventListener('error', function (event) {
+                    log('Window error', {
+                        message: event.message,
+                        filename: event.filename,
+                        line: event.lineno
+                    });
+                });
+
+                window.addEventListener('unhandledrejection', function (event) {
+                    log('Unhandled rejection', {
+                        reason: event.reason && event.reason.message ? event.reason.message : String(event.reason)
+                    });
+                });
+
+                log('Page ready');
+                if (!window.JSPlugin) {
+                    log('SDK not ready yet. If this remains, verify https://dev.meos.center/iot-message-notification/video-sdk/h5player.min.js');
+                } else {
+                    log('SDK loaded');
+                }
+            })();
+        </script>
+    </body>
+</html>
