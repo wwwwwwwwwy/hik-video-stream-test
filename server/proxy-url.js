@@ -33,6 +33,59 @@ export function extractPlaybackRequestProxyId(url) {
   return extractProxyId(url.href) || url.searchParams.get('sessionID') || url.searchParams.get('session') || null;
 }
 
+function normalizePlaybackPayload(payload) {
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  if (Buffer.isBuffer(payload)) {
+    return payload;
+  }
+  if (Array.isArray(payload)) {
+    return Buffer.concat(payload);
+  }
+  return Buffer.from(payload);
+}
+
+function textFromPlaybackPayload(payload) {
+  if (typeof payload === 'string') {
+    return payload;
+  }
+  return normalizePlaybackPayload(payload).toString('utf8');
+}
+
+export function rewriteClientPlaybackMessage(record, message, isBinary = false) {
+  if (isBinary) {
+    return normalizePlaybackPayload(message);
+  }
+
+  let text;
+  try {
+    text = textFromPlaybackPayload(message);
+  } catch {
+    return normalizePlaybackPayload(message);
+  }
+
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed.url === 'string') {
+      const proxyId = extractProxyId(parsed.url);
+      if (proxyId === record.id) {
+        parsed.url = record.upstreamPlayURL;
+      }
+    }
+    return JSON.stringify(parsed);
+  } catch {
+    return typeof message === 'string' ? message : normalizePlaybackPayload(message);
+  }
+}
+
+export function normalizeUpstreamPlaybackMessage(message, isBinary = false) {
+  if (isBinary) {
+    return normalizePlaybackPayload(message);
+  }
+  return textFromPlaybackPayload(message);
+}
+
 export function deriveUpstreamPlayback(value) {
   const url = assertStreamUrl(value);
   const versionQuery = 'version=0.1&cipherSuites=0&sessionID=';

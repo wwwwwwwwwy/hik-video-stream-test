@@ -3,7 +3,11 @@ import { createServer } from 'node:http';
 import { join, normalize, relative, sep } from 'node:path';
 import WebSocket, { WebSocketServer } from 'ws';
 import { createProxyRecord, getProxyRecord, pruneProxyRecords } from './proxy-store.js';
-import { extractPlaybackRequestProxyId, extractProxyId } from './proxy-url.js';
+import {
+  extractPlaybackRequestProxyId,
+  normalizeUpstreamPlaybackMessage,
+  rewriteClientPlaybackMessage
+} from './proxy-url.js';
 
 const host = process.env.HOST || '127.0.0.1';
 const port = Number(process.env.PORT || '8080');
@@ -11,6 +15,7 @@ const rootDir = process.cwd();
 const publicDir = join(rootDir, 'public');
 const sdkDir = join(rootDir, 'vendor', 'video-sdk');
 const bridgeStates = new WeakMap();
+const debugProxy = process.env.DEBUG_PROXY === '1';
 
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -113,6 +118,10 @@ function readRequestJson(req) {
 }
 
 function sendUpstream(state, payload) {
+  if (debugProxy) {
+    console.log('[proxy] client -> upstream', describePayload(payload));
+  }
+
   if (state.upstream && state.upstreamOpen) {
     state.upstream.send(payload);
     return;
@@ -121,36 +130,12 @@ function sendUpstream(state, payload) {
   state.pending.push(payload);
 }
 
-function normalizePayload(payload) {
+function describePayload(payload) {
   if (typeof payload === 'string') {
-    return payload;
+    return { type: 'string', length: payload.length, preview: payload.slice(0, 500) };
   }
-  if (Buffer.isBuffer(payload)) {
-    return payload;
-  }
-  if (Array.isArray(payload)) {
-    return Buffer.concat(payload);
-  }
-  return Buffer.from(payload);
-}
-
-function rewriteClientMessage(record, message) {
-  if (typeof message !== 'string') {
-    return normalizePayload(message);
-  }
-
-  try {
-    const parsed = JSON.parse(message);
-    if (typeof parsed.url === 'string') {
-      const proxyId = extractProxyId(parsed.url);
-      if (proxyId === record.id) {
-        parsed.url = record.upstreamPlayURL;
-      }
-    }
-    return JSON.stringify(parsed);
-  } catch {
-    return message;
-  }
+  const buffer = Buffer.isBuffer(payload) ? payload : Buffer.from(payload);
+  return { type: 'buffer', length: buffer.byteLength, preview: buffer.toString('utf8', 0, Math.min(buffer.byteLength, 500)) };
 }
 
 function connectUpstream(ws, state, record) {
@@ -162,6 +147,10 @@ function connectUpstream(ws, state, record) {
   upstream.binaryType = 'arraybuffer';
 
   upstream.on('open', () => {
+    if (debugProxy) {
+      console.log('[proxy] upstream open', record.upstreamConnectUrl);
+    }
+
     state.upstreamOpen = true;
     const pending = state.pending.splice(0);
     for (const item of pending) {
@@ -169,19 +158,32 @@ function connectUpstream(ws, state, record) {
     }
   });
 
-  upstream.on('message', (data) => {
+  upstream.on('message', (data, isBinary) => {
+    const payload = normalizeUpstreamPlaybackMessage(data, isBinary);
+    if (debugProxy) {
+      console.log('[proxy] upstream -> client', { isBinary, payload: describePayload(payload) });
+    }
+
     if (ws.readyState === WebSocket.OPEN) {
-      ws.send(data);
+      ws.send(payload);
     }
   });
 
-  upstream.on('error', () => {
+  upstream.on('error', (error) => {
+    if (debugProxy) {
+      console.log('[proxy] upstream error', error.message);
+    }
+
     if (ws.readyState === WebSocket.OPEN) {
       ws.close(1011, 'Upstream websocket error');
     }
   });
 
-  upstream.on('close', () => {
+  upstream.on('close', (code, reason) => {
+    if (debugProxy) {
+      console.log('[proxy] upstream close', code, reason.toString());
+    }
+
     if (ws.readyState === WebSocket.OPEN) {
       ws.close();
     }
@@ -284,19 +286,31 @@ wss.on('connection', (ws) => {
     return;
   }
 
+  if (debugProxy) {
+    console.log('[proxy] client open', { id: record.id, upstreamConnectUrl: record.upstreamConnectUrl, upstreamPlayURL: record.upstreamPlayURL });
+  }
+
   connectUpstream(ws, state, record);
 
-  ws.on('message', (message) => {
+  ws.on('message', (message, isBinary) => {
     const currentState = bridgeStates.get(ws);
     if (!currentState?.record) {
       ws.close(1008, 'Unknown proxy session.');
       return;
     }
 
-    sendUpstream(currentState, rewriteClientMessage(currentState.record, message));
+    const rewritten = rewriteClientPlaybackMessage(currentState.record, message, isBinary);
+    if (debugProxy) {
+      console.log('[proxy] client raw', { isBinary, payload: describePayload(message) });
+    }
+    sendUpstream(currentState, rewritten);
   });
 
-  ws.on('close', () => {
+  ws.on('close', (code, reason) => {
+    if (debugProxy) {
+      console.log('[proxy] client close', code, reason.toString());
+    }
+
     const currentState = bridgeStates.get(ws);
     if (currentState?.upstream && currentState.upstream.readyState === WebSocket.OPEN) {
       currentState.upstream.close();

@@ -4,7 +4,9 @@ import {
   createLocalPlaybackUrl,
   deriveUpstreamPlayback,
   extractPlaybackRequestProxyId,
-  extractProxyId
+  extractProxyId,
+  normalizeUpstreamPlaybackMessage,
+  rewriteClientPlaybackMessage
 } from '../server/proxy-url.js';
 
 describe('proxy url helpers', () => {
@@ -43,5 +45,24 @@ describe('proxy url helpers', () => {
     const url = new URL('http://127.0.0.1:8080/openUrl/path-id?sessionID=query-id');
 
     assert.equal(extractPlaybackRequestProxyId(url), 'path-id');
+  });
+
+  test('rewrites text buffer playback messages before forwarding them upstream', () => {
+    const record = {
+      id: 'local-id',
+      upstreamPlayURL: 'ws://192.168.64.44:559/openUrl/pU3bJzW'
+    };
+    const message = Buffer.from(JSON.stringify({ url: 'ws://127.0.0.1:8080/openUrl/local-id' }));
+
+    assert.equal(
+      rewriteClientPlaybackMessage(record, message, false),
+      JSON.stringify({ url: 'ws://192.168.64.44:559/openUrl/pU3bJzW' })
+    );
+  });
+
+  test('normalizes upstream text buffer messages as strings before forwarding them to the browser', () => {
+    const message = Buffer.from(JSON.stringify({ PKD: 'value', rand: 'nonce' }));
+
+    assert.equal(normalizeUpstreamPlaybackMessage(message, false), JSON.stringify({ PKD: 'value', rand: 'nonce' }));
   });
 });
